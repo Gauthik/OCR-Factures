@@ -53,9 +53,11 @@ class Coordonnees:
 def convertion_pdf_jpg(path_pdf):
     #On converti le pdf en jpg
     pages = convert_from_path(PATH_PDF, 850)
+    path_folder_pdf = os.path.dirname(os.path.abspath(path_pdf))
+
     i=1
     for page in pages:
-        filename_jpg = 'out_facture'+str(i)+'.jpg'
+        filename_jpg = path_folder_pdf + '\out_facture'+str(i)+'.jpg'
         page.save(filename_jpg, 'JPEG')
         i+=1
 
@@ -65,6 +67,8 @@ def convertion_pdf_jpg(path_pdf):
 def recuperation_position_depuis_pourcentage(filename_jpg, positions_pourcentages):
     im = Image.open(filename_jpg)
     width, height = im.size
+
+    positions = {}
 
     for nom, pourcentages in positions_pourcentages_gimp.items():
 
@@ -83,6 +87,8 @@ def recuperation_position_depuis_pourcentage_gimp(filename_jpg, positions_pource
     im = Image.open(filename_jpg)
     width, height = im.size
 
+    positions = {}
+
     for nom, pourcentages in positions_pourcentages_gimp.items():
 
         coord = Coordonnees()
@@ -98,15 +104,17 @@ def recuperation_position_depuis_pourcentage_gimp(filename_jpg, positions_pource
 
 def decoupe_image(path_image, positions):
     #Permet de découper une images en plusieurs zones spécifiques définies par le paramètre "positions" qui est un dictionnaire
+    path_folder_image = os.path.dirname(os.path.abspath(path_image))
+
     liste_fichiers = []
     for nom, position in positions.items():
         im = Image.open(path_image).convert('L')
         im = im.crop(position)
 
-        filename = '_'+str(nom)+'.jpg'
+        filename = path_folder_image + '\_'+str(nom)+'.jpg'
         liste_fichiers.append((nom,filename))
 
-        im.save('_'+str(nom)+'.jpg')
+        im.save(filename)
     return liste_fichiers
 
 
@@ -140,12 +148,16 @@ def correction_data(liste_output_data, dict_corrections={}):
 if __name__ == '__main__':
 
     #Emplacement de la facture a traiter
-    PATH_DOSSIER = """C:\\Users\\GAUTHIER\\Documents\\Programmation\\Python\\OCR_TEST"""
+    PATH_DOSSIER = """C:\\Users\\GAUTHIER\\Documents\\Programmation\\Python\\OCR_TEST\\Factures"""
     PATH_PDF = PATH_DOSSIER + "\\test_facture.pdf"
 
     #dictionnaire des positions en pourcentages (type gimp)
     positions_pourcentages_gimp = {"total" : [85.24, 94.7, 12.7, 2.27],
-                "numero_facture" : [4, 25.5, 12, 1.80]}
+                "numero_facture" : [4, 25.5, 12, 1.80],
+                "date" : [3.3, 28.5, 9.75, 2.37],
+                "prix_ht" : [85.75, 87.11, 12.36, 2.05],
+                "prix_tva" : [88.26, 89.73, 8.43, 1.81],
+                "nom" : [45.78, 1.65, 53.18, 2.29]}
 
     #dictionnaire de correction
     dict_corrections =  {"numero_facture": "[^0-9]"}
