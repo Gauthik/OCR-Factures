@@ -23,6 +23,32 @@ pytesseract.pytesseract.tesseract_cmd = r'C:\Users\GAUTHIER\AppData\Local\Tesser
     -
 """
 
+class Coordonnees:
+    def __init__(self, x_coord=-1, y_coord=-1, x_coord_final=-1, y_coord_final=-1):
+        self.x_coord = x_coord
+        self.y_coord = y_coord
+        self.x_coord_final = x_coord_final
+        self.y_coord_final = y_coord_final
+
+    def coordonnees_valides(self):
+        valid = True
+        for (nom, coord) in self.__dict__.items():
+            if coord == -1:
+                valid = False
+
+        if self.x_coord >= self.x_coord_final or self.y_coord >= self.y_coord_final:
+            valid = False
+
+        return valid
+
+    def liste_coordonnees(self):
+        if self.coordonnees_valides == False:
+            print("coordonnées non valides")
+            return False
+
+        return [self.x_coord, self.y_coord, self.x_coord_final, self.y_coord_final]
+
+
 
 def convertion_pdf_jpg(path_pdf):
     #On converti le pdf en jpg
@@ -36,54 +62,45 @@ def convertion_pdf_jpg(path_pdf):
     return filename_jpg
 
 
-
 def recuperation_position_depuis_pourcentage(filename_jpg, positions_pourcentages):
     im = Image.open(filename_jpg)
     width, height = im.size
 
-    for nom, pourcentages in positions_pourcentages.items():
-        print(nom, pourcentages)
-        liste_positions_pixels = []
-        parite = "impaire"
-        for pourcentage in pourcentages:
-            if parite == "impaire":
-                positions_pixel = int((float(pourcentage)*int(width))/100)
-                parite = "paire"
+    for nom, pourcentages in positions_pourcentages_gimp.items():
 
-            elif parite == "paire":
-                positions_pixel = int((float(pourcentage)*int(height))/100)
-                parite = "impaire"
+        coord = Coordonnees()
+        coord.x_coord = int((float(pourcentages[0])*int(width))/100)
+        coord.y_coord = int((float(pourcentages[1])*int(height))/100)
+        coord.x_coord_final = int((float(pourcentages[2])*int(width))/100)
+        coord.y_coord_final = int((float(pourcentages[3])*int(height))/100)
 
-            liste_positions_pixels.append(positions_pixel)
-
-        positions[nom] = liste_positions_pixels
+        positions[nom] = coord.liste_coordonnees()
 
     return positions
+
 
 def recuperation_position_depuis_pourcentage_gimp(filename_jpg, positions_pourcentages_gimp):
     im = Image.open(filename_jpg)
     width, height = im.size
 
     for nom, pourcentages in positions_pourcentages_gimp.items():
-        liste_positions_pixels = []
 
-        x_pos = int((float(pourcentages[0])*int(width))/100)
-        y_pos = int((float(pourcentages[1])*int(height))/100)
-        x_pos_larg = int(x_pos + (float(pourcentages[2])*int(width))/100)
-        y_pos_hauteur = int(y_pos + (float(pourcentages[3])*int(height))/100)
-        liste_positions_pixels = [x_pos, y_pos, x_pos_larg, y_pos_hauteur]
+        coord = Coordonnees()
+        coord.x_coord = int((float(pourcentages[0])*int(width))/100)
+        coord.y_coord = int((float(pourcentages[1])*int(height))/100)
+        coord.x_coord_final = int(coord.x_coord + (float(pourcentages[2])*int(width))/100)
+        coord.y_coord_final = int(coord.y_coord + (float(pourcentages[3])*int(height))/100)
 
-        positions[nom] = liste_positions_pixels
+        positions[nom] = coord.liste_coordonnees()
 
     return positions
 
 
-
-def decoupe_image(positions):
-    #On coupe le jpg master en petites zones avec les informations importantes
+def decoupe_image(path_image, positions):
+    #Permet de découper une images en plusieurs zones spécifiques définies par le paramètre "positions" qui est un dictionnaire
     liste_fichiers = []
     for nom, position in positions.items():
-        im = Image.open('out_facture1.jpg').convert('L')
+        im = Image.open(path_image).convert('L')
         im = im.crop(position)
 
         filename = '_'+str(nom)+'.jpg'
@@ -94,41 +111,61 @@ def decoupe_image(positions):
 
 
 def texte_zones(liste_fichiers):
-    #On recupère le texte des zones
+    #Permet de récupèrer le texte écrit sur une image
+    liste_output_data = []
     for nom, fichier in liste_fichiers:
         img = cv2.imread(fichier)
-        print("---" + str(nom) + "---")
         data = pytesseract.image_to_string(img)
-        if nom == "numero_facture":
-            data = re.sub("[^0-9]", "", data)
-        print(data)
+        liste_output_data.append((nom, data))
+
+    return liste_output_data
+
+def correction_data(liste_output_data, dict_corrections={}):
+    #Fonction assez spécifique qui permet de corriger d'éventuelles erreurs de lecture en savant quel type
+    # d'information on attend,en éviter d'avoir des charactères parasites qui peuvent avoir été lu.
+    #ex : dict_corrections =  {"numero_facture": "[^0-9]"} est un dictionnaire qui permet de corriger pour chaque information
+    for (nom, data) in liste_output_data:
+        if nom in dict_corrections:
+            new_data = re.sub(dict_corrections[nom], "", data)
+            liste_output_data[liste_output_data.index((nom, data))] = (nom, new_data)
+
+    return liste_output_data
 
 
 #On supprime les images des zones crées
 
 
 
-PATH_DOSSIER = """C:\\Users\\GAUTHIER\\Documents\\Programmation\\Python\\OCR_TEST"""
-PATH_PDF = PATH_DOSSIER + "\\test_facture.pdf"
 
+if __name__ == '__main__':
 
+    #Emplacement de la facture a traiter
+    PATH_DOSSIER = """C:\\Users\\GAUTHIER\\Documents\\Programmation\\Python\\OCR_TEST"""
+    PATH_PDF = PATH_DOSSIER + "\\test_facture.pdf"
 
-positions = {"total" : [5550, 8770, 5550+1000, 8770+450],
-            "numero_facture" : [150, 2380, 150+1000, 2400+200]}
+    #dictionnaire des positions en pourcentages (type gimp)
+    positions_pourcentages_gimp = {"total" : [85.24, 94.7, 12.7, 2.27],
+                "numero_facture" : [4, 25.5, 12, 1.80]}
 
-positions_pourcentages = {"total" : [83.9, 93.7, 99.1, 98.5],
-            "numero_facture" : [2, 25.4, 17.4, 27.8]}
+    #dictionnaire de correction
+    dict_corrections =  {"numero_facture": "[^0-9]"}
 
-positions_pourcentages_gimp = {"total" : [83.8, 93.8, 15.0, 4.70],
-            "numero_facture" : [3.81, 25.61, 12.10, 1.80]}
+    #Convertion du pdf en jpg
+    filename_jpg = convertion_pdf_jpg(PATH_PDF)
 
-positions_pourcentages_gimp = {"total" : [85.24, 94.7, 12.7, 2.27],
-            "numero_facture" : [4, 25.5, 12, 1.80]}
+    #Positions en pixel des emplacements
+    nouvelle_position_gimp = recuperation_position_depuis_pourcentage_gimp(filename_jpg, positions_pourcentages_gimp)
 
+    #Decoupe des zones interessantes
+    liste_fichiers = decoupe_image(filename_jpg, nouvelle_position_gimp)
 
-filename_jpg = convertion_pdf_jpg(PATH_PDF)
-nouvelle_position_gimp = recuperation_position_depuis_pourcentage_gimp(filename_jpg, positions_pourcentages_gimp)
-liste_fichiers = decoupe_image(nouvelle_position_gimp)
-texte_zones(liste_fichiers)
+    #Données contenues dans ces zones
+    liste_output_data = texte_zones(liste_fichiers)
+
+    #Correction éventuelles de ces données
+    cleaned_data = correction_data(liste_output_data, dict_corrections)
+
+    #Affichage des données finales
+    print(cleaned_data)
 
 
