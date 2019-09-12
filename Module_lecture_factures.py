@@ -14,13 +14,18 @@ import cv2
 import re
 from PIL import Image
 import os
+import numpy as np
 
 pytesseract.pytesseract.tesseract_cmd = r'C:\Users\GAUTHIER\AppData\Local\Tesseract-OCR\tesseract.exe'
 
 
 """TODO :
     - Correction des erreurs lors de la lecture, voir pour faire un ocr avec une autre méthode et comparer les résultats.
-    -
+    - Voir pour faire du preprocessing des images pour améliorer le résultat de la lecture
+    - Voir pour faire du processing sur chaque zones d'images au lieu de la grande.
+
+    AMELIORATIONS :
+        - GUI qui permet de paramètrer facilement les zones de recherches avec des rectangles associés à des noms
 """
 
 class Coordonnees:
@@ -49,7 +54,6 @@ class Coordonnees:
         return [self.x_coord, self.y_coord, self.x_coord_final, self.y_coord_final]
 
 
-
 def convertion_pdf_jpg(path_pdf):
     #On converti le pdf en jpg
     pages = convert_from_path(PATH_PDF, 850)
@@ -62,6 +66,36 @@ def convertion_pdf_jpg(path_pdf):
         i+=1
 
     return filename_jpg
+
+def preprocessing(path_image):
+    image = cv2.imread(path_image)
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    kernel = np.ones((5,5), np.uint8)
+
+    gray = cv2.dilate(gray, kernel, iterations=2)
+    gray = cv2.erode(gray, kernel, iterations=2)
+
+##    gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)[1]
+
+##    gray = cv2.threshold(gray, 0, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C | cv2.THRESH_OTSU)[1]
+
+##    gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY | cv2.ADAPTIVE_THRESH_GAUSSIAN_C)[1]
+##    gray = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
+
+
+
+    blur = cv2.GaussianBlur(gray,(5,5),0)
+    gray = cv2.threshold(gray,0,255,cv2.THRESH_BINARY+cv2.THRESH_OTSU)[1]
+
+##    image = cv2.imread(path_image, 0)
+##    gray = cv2.medianBlur(image, 5)
+##    gray = cv2.adaptiveThreshold(gray,255,cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY,11,2)
+
+    filename = os.path.basename(path_image)
+    cv2.imwrite(path_image, gray)
+
+    return path_image
 
 
 def recuperation_position_depuis_pourcentage(filename_jpg, positions_pourcentages):
@@ -122,6 +156,7 @@ def texte_zones(liste_fichiers):
     #Permet de récupèrer le texte écrit sur une image
     liste_output_data = []
     for nom, fichier in liste_fichiers:
+        fichier = preprocessing(fichier)
         img = cv2.imread(fichier)
         data = pytesseract.image_to_string(img)
         liste_output_data.append((nom, data))
@@ -139,23 +174,38 @@ def correction_data(liste_output_data, dict_corrections={}):
 
     return liste_output_data
 
+def positions_double_verification(dict_positions):
+    increment = float(0.1)
+    nbr_increments = 4
+    nouveau_dict_positions = {}
+    for (nom, position) in dict_positions.items():
+        for i in range(nbr_increments):
+            nouvelle_position = [position[0], position[1] + float((i+1)*increment), position[2], position[3]]
+            nouveau_dict_positions[str(nom) + "_" + str(i+1)] = nouvelle_position
+
+        for i in range(nbr_increments):
+            nouvelle_position = [position[0], position[1] - (i+1)*increment, position[2], position[3]]
+            nouveau_dict_positions[str(nom) + "_-" + str(i+1)] = nouvelle_position
+
+    return nouveau_dict_positions
+
+
+
 
 #On supprime les images des zones crées
-
-
 
 
 if __name__ == '__main__':
 
     #Emplacement de la facture a traiter
     PATH_DOSSIER = """C:\\Users\\GAUTHIER\\Documents\\Programmation\\Python\\OCR_TEST\\Factures"""
-    PATH_PDF = PATH_DOSSIER + "\\test_facture.pdf"
+    PATH_PDF = PATH_DOSSIER + "\\test_facture3.pdf"
 
     #dictionnaire des positions en pourcentages (type gimp)
-    positions_pourcentages_gimp = {"total" : [85.24, 94.7, 12.7, 2.27],
-                "numero_facture" : [4, 25.5, 12, 1.80],
+    positions_pourcentages_gimp = {"total" : [85.24, 94.7, 12.7, 2.27], #ok pour y_coord = 94, 94.1, 94.2, 94.3
+                "numero_facture" : [2.9, 25.35, 14.3, 2.51],
                 "date" : [3.3, 28.5, 9.75, 2.37],
-                "prix_ht" : [85.75, 87.11, 12.36, 2.05],
+                "prix_ht" : [87.6, 86.87, 10.28, 2.17],
                 "prix_tva" : [88.26, 89.73, 8.43, 1.81],
                 "nom" : [45.78, 1.65, 53.18, 2.29]}
 
@@ -165,8 +215,13 @@ if __name__ == '__main__':
     #Convertion du pdf en jpg
     filename_jpg = convertion_pdf_jpg(PATH_PDF)
 
+    positions_double_verif = positions_double_verification(positions_pourcentages_gimp)
+
     #Positions en pixel des emplacements
-    nouvelle_position_gimp = recuperation_position_depuis_pourcentage_gimp(filename_jpg, positions_pourcentages_gimp)
+    nouvelle_position_gimp = recuperation_position_depuis_pourcentage_gimp(filename_jpg, positions_double_verif)
+
+    #On fait plusieurs lecture de la même zone en utilisant un offset
+##    positions_double_verif = positions_double_verification(nouvelle_position_gimp)
 
     #Decoupe des zones interessantes
     liste_fichiers = decoupe_image(filename_jpg, nouvelle_position_gimp)
